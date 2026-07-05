@@ -1,7 +1,7 @@
 {
   "name": "com.immersive.pooling",
   "displayName": "Immersive Pooling",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "specialized package for generic pooling primitives",
   "author": {
     "name": "Immersive Games"

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Immersive.Pooling.Contracts;
 using Immersive.Pooling.Unity.Instances;
+using Immersive.Pooling.Unity.Runtime;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -11,17 +12,35 @@ namespace Immersive.Pooling.Unity.Pools
     {
         private readonly Dictionary<GameObject, Entry> _entries = new Dictionary<GameObject, Entry>();
         private readonly Stack<GameObject> _available = new Stack<GameObject>();
+        private readonly PoolAutoReturnTracker _autoReturnTracker;
 
         public GameObjectPool(GameObject prefab, Transform parent = null, int initialCapacity = 0)
+            : this(prefab, parent, initialCapacity, int.MaxValue, true, 0f, null)
+        {
+        }
+
+        public GameObjectPool(
+            GameObject prefab,
+            Transform parent,
+            int initialCapacity,
+            int maxSize,
+            bool canExpand,
+            float autoReturnSeconds = 0f,
+            MonoBehaviour coroutineHost = null)
         {
             Prefab = prefab ?? throw new ArgumentNullException(nameof(prefab));
-
-            if (initialCapacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(initialCapacity));
-            }
-
             Parent = parent;
+            InitialCapacity = initialCapacity;
+            MaxSize = maxSize;
+            CanExpand = canExpand;
+            AutoReturnSeconds = autoReturnSeconds;
+
+            ValidateCapacity(initialCapacity, maxSize, autoReturnSeconds);
+
+            if (AutoReturnSeconds > 0f)
+            {
+                _autoReturnTracker = new PoolAutoReturnTracker(coroutineHost);
+            }
 
             Prewarm(initialCapacity);
         }
@@ -30,9 +49,21 @@ namespace Immersive.Pooling.Unity.Pools
 
         public Transform Parent { get; }
 
+        public int InitialCapacity { get; }
+
+        public int MaxSize { get; }
+
+        public bool CanExpand { get; }
+
+        public float AutoReturnSeconds { get; }
+
         public int AvailableCount => CountAvailableEntries();
 
-        public int TakenCount => TotalCount - AvailableCount;
+        public int InactiveCount => AvailableCount;
+
+        public int TakenCount => ActiveCount;
+
+        public int ActiveCount => TotalCount - AvailableCount;
 
         public int TotalCount => _entries.Count;
 
@@ -43,13 +74,22 @@ namespace Immersive.Pooling.Unity.Pools
                 throw new ArgumentOutOfRangeException(nameof(count));
             }
 
-            for (var i = 0; i < count; i++)
+            while (TotalCount < count)
             {
-                CreateInstance(available: true);
+                if (!TryCreateInstance(available: true, out _))
+                {
+                    throw new InvalidOperationException(
+                        $"Pool prewarm exceeded capacity. prefab='{Prefab.name}' requested='{count}' max='{MaxSize}'.");
+                }
             }
         }
 
         public GameObject Take()
+        {
+            return Rent();
+        }
+
+        public GameObject Rent(Transform parent = null)
         {
             while (_available.Count > 0)
             {
@@ -57,26 +97,40 @@ namespace Immersive.Pooling.Unity.Pools
 
                 if (instance == null)
                 {
-                    _entries.Remove(instance);
+                    RemoveDestroyedEntries();
                     continue;
                 }
 
                 if (!_entries.TryGetValue(instance, out var entry) || !entry.isAvailable)
                 {
-                    _entries.Remove(instance);
                     continue;
                 }
 
                 entry.isAvailable = false;
+                entry.rentCount++;
                 BindReturnHandle(instance);
+                MoveToParent(instance, parent ?? Parent);
                 ActivateAndNotify(instance);
+                TrackAutoReturn(instance);
                 return instance;
             }
 
-            var created = CreateInstance(available: false);
+            if (!TryCreateInstance(available: false, out var created))
+            {
+                throw new InvalidOperationException(
+                    $"Pool limit reached. prefab='{Prefab.name}' active='{ActiveCount}' inactive='{InactiveCount}' total='{TotalCount}' max='{MaxSize}' canExpand='{CanExpand}'.");
+            }
+
             BindReturnHandle(created);
+            MoveToParent(created, parent ?? Parent);
             ActivateAndNotify(created);
+            TrackAutoReturn(created);
             return created;
+        }
+
+        public GameObject Spawn(Transform parent = null)
+        {
+            return Rent(parent);
         }
 
         public bool Return(GameObject instance)
@@ -96,8 +150,9 @@ namespace Immersive.Pooling.Unity.Pools
                 return false;
             }
 
-            NotifyPoolables(instance, takenFromPool: false);
-            MoveToParent(instance);
+            CancelAutoReturn(instance);
+            NotifyPoolables(instance, PoolNotification.Returned);
+            MoveToParent(instance, Parent);
             instance.SetActive(false);
 
             entry.isAvailable = true;
@@ -106,8 +161,26 @@ namespace Immersive.Pooling.Unity.Pools
             return true;
         }
 
+        public int ReturnAll()
+        {
+            var instances = new List<GameObject>(_entries.Keys);
+            var returned = 0;
+
+            for (var i = 0; i < instances.Count; i++)
+            {
+                if (Return(instances[i]))
+                {
+                    returned++;
+                }
+            }
+
+            return returned;
+        }
+
         public void Clear()
         {
+            _autoReturnTracker?.Clear();
+
             var entries = new List<GameObject>(_entries.Keys);
 
             for (var i = 0; i < entries.Count; i++)
@@ -119,57 +192,84 @@ namespace Immersive.Pooling.Unity.Pools
             _entries.Clear();
         }
 
-        private GameObject CreateInstance(bool available)
+        private bool TryCreateInstance(bool available, out GameObject instance)
         {
-            var instance = Parent == null
+            instance = null;
+
+            if (!CanCreate(available))
+            {
+                return false;
+            }
+
+            instance = Parent == null
                 ? Object.Instantiate(Prefab)
                 : Object.Instantiate(Prefab, Parent);
 
-            MoveToParent(instance);
+            MoveToParent(instance, Parent);
             instance.SetActive(false);
             EnsureReturnHandle(instance);
 
             _entries.Add(instance, new Entry { isAvailable = available });
+            NotifyPoolables(instance, PoolNotification.Created);
 
             if (available)
             {
                 _available.Push(instance);
             }
 
-            return instance;
+            return true;
+        }
+
+        private bool CanCreate(bool available)
+        {
+            if (TotalCount >= MaxSize)
+            {
+                return false;
+            }
+
+            if (available)
+            {
+                return true;
+            }
+
+            return TotalCount < InitialCapacity || CanExpand;
         }
 
         private void ActivateAndNotify(GameObject instance)
         {
             instance.SetActive(true);
-            NotifyPoolables(instance, takenFromPool: true);
+            NotifyPoolables(instance, PoolNotification.Taken);
         }
 
-        private void NotifyPoolables(GameObject instance, bool takenFromPool)
+        private static void NotifyPoolables(GameObject instance, PoolNotification notification)
         {
             var components = instance.GetComponentsInChildren<MonoBehaviour>(true);
 
             for (var i = 0; i < components.Length; i++)
             {
-                if (components[i] is IPoolable poolable)
+                switch (components[i])
                 {
-                    if (takenFromPool)
-                    {
+                    case IPoolLifecycle lifecycle when notification == PoolNotification.Created:
+                        lifecycle.OnCreatedByPool();
+                        break;
+                    case IPoolLifecycle lifecycle when notification == PoolNotification.Destroyed:
+                        lifecycle.OnDestroyedByPool();
+                        break;
+                    case IPoolable poolable when notification == PoolNotification.Taken:
                         poolable.OnTakenFromPool();
-                    }
-                    else
-                    {
+                        break;
+                    case IPoolable poolable when notification == PoolNotification.Returned:
                         poolable.OnReturnedToPool();
-                    }
+                        break;
                 }
             }
         }
 
-        private void MoveToParent(GameObject instance)
+        private static void MoveToParent(GameObject instance, Transform parent)
         {
-            if (Parent != null)
+            if (parent != null)
             {
-                instance.transform.SetParent(Parent, false);
+                instance.transform.SetParent(parent, false);
             }
         }
 
@@ -180,6 +280,8 @@ namespace Immersive.Pooling.Unity.Pools
                 return;
             }
 
+            CancelAutoReturn(instance);
+            NotifyPoolables(instance, PoolNotification.Destroyed);
             ClearReturnHandle(instance);
 
             if (Application.isPlaying)
@@ -191,9 +293,74 @@ namespace Immersive.Pooling.Unity.Pools
             Object.DestroyImmediate(instance);
         }
 
+        private void TrackAutoReturn(GameObject instance)
+        {
+            if (_autoReturnTracker == null || AutoReturnSeconds <= 0f)
+            {
+                return;
+            }
+
+            _autoReturnTracker.Track(instance, AutoReturnSeconds, Return);
+        }
+
+        private void CancelAutoReturn(GameObject instance)
+        {
+            _autoReturnTracker?.Cancel(instance);
+        }
+
+        private void RemoveDestroyedEntries()
+        {
+            var destroyed = new List<GameObject>();
+
+            foreach (var instance in _entries.Keys)
+            {
+                if (instance == null)
+                {
+                    destroyed.Add(instance);
+                }
+            }
+
+            for (var i = 0; i < destroyed.Count; i++)
+            {
+                _entries.Remove(destroyed[i]);
+            }
+        }
+
+        private static void ValidateCapacity(int initialCapacity, int maxSize, float autoReturnSeconds)
+        {
+            if (initialCapacity < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(initialCapacity));
+            }
+
+            if (maxSize <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxSize));
+            }
+
+            if (initialCapacity > maxSize)
+            {
+                throw new ArgumentException("Initial capacity must be less than or equal to max size.");
+            }
+
+            if (autoReturnSeconds < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(autoReturnSeconds));
+            }
+        }
+
         private sealed class Entry
         {
             public bool isAvailable;
+            public int rentCount;
+        }
+
+        private enum PoolNotification
+        {
+            Created,
+            Taken,
+            Returned,
+            Destroyed
         }
 
         private static PoolReturnHandle EnsureReturnHandle(GameObject instance)

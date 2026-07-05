@@ -13,6 +13,8 @@ namespace Immersive.Pooling.Unity.Instances
 
         public bool IsReturned => _isReturned;
 
+        public GameObjectPool Pool => _pool;
+
         public void Bind(GameObjectPool pool)
         {
             if (pool == null)
