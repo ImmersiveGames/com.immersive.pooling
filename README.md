@@ -5,9 +5,9 @@ Generic Unity pooling primitives for the Immersive Framework package set.
 ## Installation
 
 Configure OpenUPM for the `com.immersive` scope and add
-`com.immersive.pooling` version `0.2.1` to `Packages/manifest.json`.
+`com.immersive.pooling` version `0.2.2` to `Packages/manifest.json`.
 
-Git fallback: `https://github.com/ImmersiveGames/com.immersive.pooling.git#v0.2.1`.
+Git fallback: `https://github.com/ImmersiveGames/com.immersive.pooling.git#v0.2.2`.
 
 ## Role
 
