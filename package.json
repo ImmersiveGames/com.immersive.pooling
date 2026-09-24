@@ -1,11 +1,17 @@
 {
   "name": "com.immersive.pooling",
   "displayName": "Immersive Pooling",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "specialized package for generic pooling primitives",
-  "author": {
-    "name": "Immersive Games"
-  },
   "unity": "6000.5",
-  "unityRelease": "0f1"
+  "unityRelease": "0f1",
+  "license": "MIT",
+  "licensesUrl": "https://github.com/ImmersiveGames/com.immersive.pooling/blob/main/LICENSE.md",
+  "documentationUrl": "https://github.com/ImmersiveGames/com.immersive.pooling#readme",
+  "changelogUrl": "https://github.com/ImmersiveGames/com.immersive.pooling/blob/main/CHANGELOG.md",
+  "author": {
+    "name": "Immersive Games",
+    "url": "http://www.immersivegame.com.br",
+    "email": "contato@immersivegames.com.br"
+  }
 }

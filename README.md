@@ -2,6 +2,13 @@
 
 Generic Unity pooling primitives for the Immersive Framework package set.
 
+## Installation
+
+Configure OpenUPM for the `com.immersive` scope and add
+`com.immersive.pooling` version `0.2.1` to `Packages/manifest.json`.
+
+Git fallback: `https://github.com/ImmersiveGames/com.immersive.pooling.git#v0.2.1`.
+
 ## Role
 
 `com.immersive.pooling` owns reusable pooling mechanics only:
@@ -76,3 +83,7 @@ Audio can later hold explicit `PoolDefinitionAsset` references and receive an `I
 6. Return all.
 7. Clear the pool.
 8. Confirm `PoolableBehaviour` callbacks and active/inactive counts.
+
+## License
+
+Licensed under the [MIT License](LICENSE.md).
