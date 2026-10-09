@@ -1,69 +1,28 @@
-# Pooling How-To
+# Pooling Manual QA Smoke
 
-## PoolDefinitionAsset
+Use the [Pooling Usage Guide](Pooling-Usage-Guide.md) for canonical asset authoring, `PoolService`/`PoolRuntimeHost` composition, return behavior, lifetime, cleanup, and errors. This page keeps only the package-local manual QA entry procedure and its Context Menu actions.
 
-Create a `PoolDefinitionAsset` from `Immersive > Pooling > Pool Definition`.
+## Manual QA smoke
 
-Required fields:
+This is a manually invoked smoke helper, not an automated test or a certification run. In a Unity scene:
 
-- `Prefab`: prefab reused by the pool.
-- `Initial Capacity`: number of instances to create when prewarming.
-- `Max Size`: hard cap for created instances.
-- `Can Expand`: allows rent to create instances beyond the initial capacity.
+1. Create and configure a `PoolDefinitionAsset` using the [canonical authoring procedure](Pooling-Usage-Guide.md#3-criar-um-pooldefinitionasset).
+2. Add a `PoolRuntimeHost` to a scene GameObject and assign the definition.
+3. Add `PoolingQaContextMenuDriver` to a QA GameObject; assign the host and definition. Optionally assign `Rent Parent` and set `Burst Count`.
+4. Invoke actions in this order from the component's Context Menu:
 
-Behavior fields:
+   - `Pooling QA/Ensure Pool`
+   - `Pooling QA/Prewarm`
+   - `Pooling QA/Rent One`
+   - `Pooling QA/Rent Burst`
+   - `Pooling QA/Return Last`
+   - `Pooling QA/Return All`
+   - `Pooling QA/Clear Pool`
 
-- `Prewarm On Register`: `EnsureRegistered` creates `Initial Capacity`.
-- `Registration Mode`: `LazyOnFirstRent` can register during rent; `ExplicitPrepareOnly` requires an earlier `EnsureRegistered` or `Prewarm`.
-- `Auto Return Seconds`: optional generic timed return. `0` disables it.
+5. Confirm rented instances are created under the configured parent, returned instances become available again, and clearing removes the pool's instances.
 
-## Explicit Service
+`Run Basic Scenario` performs Ensure Pool, Prewarm, Rent One, Return Last, Rent Burst, and Return All. It does not call Clear Pool. The driver requires an assigned `PoolDefinitionAsset` and a `PoolRuntimeHost`; it attempts to find the host in its parents and initializes it if needed. Missing references throw `MissingReferenceException` rather than silently skipping the action.
 
-```csharp
-var service = new PoolService();
-service.EnsureRegistered(definition);
+The host also exposes these separate Context Menu operations: `Pooling/Initialize`, `Pooling/Prewarm All`, `Pooling/Return All`, `Pooling/Clear All`, and `Pooling/Shutdown`. These act on the host's configured definitions and are not part of the QA driver's `Run Basic Scenario`.
 
-var instance = service.Rent(definition, parent);
-
-service.Return(definition, instance);
-service.Shutdown();
-```
-
-Use the `PoolDefinitionAsset` reference as identity. Do not use labels or strings to resolve a pool.
-
-## Scene Host
-
-Add `PoolRuntimeHost` to a scene object and assign definitions. The host creates a local `PoolService`; it does not register globally.
-
-Useful context menu actions:
-
-- `Pooling/Initialize`
-- `Pooling/Prewarm All`
-- `Pooling/Return All`
-- `Pooling/Clear All`
-- `Pooling/Shutdown`
-
-## Instance Return
-
-Rented objects receive a `PoolReturnHandle` automatically.
-
-```csharp
-var handle = GetComponent<PoolReturnHandle>();
-handle.ReturnToPool();
-```
-
-Duplicate or foreign returns are rejected with `false`.
-
-## QA
-
-Use `PoolingQaContextMenuDriver` with a `PoolRuntimeHost` and one `PoolDefinitionAsset`.
-
-Suggested flow:
-
-1. `Pooling QA/Ensure Pool`
-2. `Pooling QA/Prewarm`
-3. `Pooling QA/Rent One`
-4. `Pooling QA/Rent Burst`
-5. `Pooling QA/Return Last`
-6. `Pooling QA/Return All`
-7. `Pooling QA/Clear Pool`
+The helper retains its rented-object list for the sequence. Use `Return All` before `Clear Pool`; after clearing, the driver clears its list. This QA driver lives in the package's Unity runtime assembly and exposes editor Context Menu actions. No automated package tests or shipped `Samples~` are provided.

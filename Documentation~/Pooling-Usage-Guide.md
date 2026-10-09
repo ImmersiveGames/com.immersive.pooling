@@ -389,49 +389,22 @@ service.Shutdown();
 
 Depois de `Shutdown`, chamadas no service lançam erro porque ele está encerrado.
 
-## 13. QA Harness
+## 13. QA manual do package
 
-O QA sintético criado para este package fica em:
+O package contém `PoolingQaContextMenuDriver`, um helper de smoke manual com ações Unity Context Menu. Ele não é uma suíte automatizada nem uma certificação. Siga a [sequência de QA manual](Pooling-How-To.md#manual-qa-smoke), que exige `PoolRuntimeHost` e `PoolDefinitionAsset` explícitos.
 
-```text
-Assets/ImmersiveFrameworkQA/Pooling/
-```
+Não há código de testes automatizados ou `Samples~` distribuídos neste package. Os smokes devem ser executados manualmente no Unity pelo consumidor; nenhuma execução é afirmada por este guia.
 
-Gerador de cena:
+## 14. Integração com Audio
 
-```text
-Immersive Framework QA > Pooling > Create or Refresh Pooling QA Scene
-```
+`com.immersive.audio` uses pooling for explicitly configured pooled SFX:
 
-Cena criada:
+- cue keeps an explicit `PoolDefinitionAsset` reference;
+- Audio composition supplies an `IPoolService` explicitly;
+- there is no global service lookup or dependency on `FrameworkRuntimeHost`;
+- a missing pool configuration is an explicit failure, not a fallback to direct playback.
 
-```text
-Assets/ImmersiveFrameworkQA/Pooling/Scenes/QA_Pooling.unity
-```
-
-Smokes disponíveis no painel:
-
-```text
-Basic Smoke
-Max Limit Smoke
-Auto Return Smoke
-```
-
-Critérios esperados:
-
-- Basic Smoke: prewarm/rent/return/reuse/return all funciona;
-- Max Limit Smoke: `maxSize` e `canExpand=false` são respeitados;
-- Auto Return Smoke: objeto retorna automaticamente após o tempo configurado.
-
-## 14. Uso futuro pelo Audio
-
-Audio deve consumir pooling assim:
-
-- manter referências explícitas a `PoolDefinitionAsset`;
-- receber `IPoolService` por composição própria;
-- não procurar serviço global;
-- não depender de `FrameworkRuntimeHost`;
-- usar pooled emitters apenas quando o pool estiver configurado.
+The package boundary remains unchanged: Pooling owns generic mechanics and Audio owns its playback policy.
 
 Exemplo conceitual:
 

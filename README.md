@@ -4,10 +4,7 @@ Generic Unity pooling primitives for the Immersive Framework package set.
 
 ## Installation
 
-Configure OpenUPM for the `com.immersive` scope and add
-`com.immersive.pooling` version `0.2.2` to `Packages/manifest.json`.
-
-Git fallback: `https://github.com/ImmersiveGames/com.immersive.pooling.git#v0.2.2`.
+Use the package source already configured by the consuming project. Resolve the installed version from `Packages/manifest.json` and `packages-lock.json`; this README does not pin a version for discovery.
 
 ## Role
 
@@ -20,6 +17,18 @@ Git fallback: `https://github.com/ImmersiveGames/com.immersive.pooling.git#v0.2.
 
 It does not own framework bootstrap, Audio, VFX, gameplay identity, scene flow, service location, or singleton registration.
 
+## Find a capability
+
+The [Pooling Usage Guide](Documentation~/Pooling-Usage-Guide.md) is the canonical authoring and runtime procedure. The [Boundary](Documentation~/Pooling-Boundary.md) defines ownership and package limits. [Pooling How-To](Documentation~/Pooling-How-To.md) is retained for the package's manual QA context-menu procedure.
+
+| Intent | Guide |
+|---|---|
+| Author a pool asset and choose registration behavior | [Asset authoring](Documentation~/Pooling-Usage-Guide.md#3-criar-um-pooldefinitionasset), [Registration Mode](Documentation~/Pooling-Usage-Guide.md#6-registration-mode) |
+| Use a scene-local host | [PoolRuntimeHost](Documentation~/Pooling-Usage-Guide.md#4-uso-por-cena-com-poolruntimehost) |
+| Own a service explicitly | [PoolService](Documentation~/Pooling-Usage-Guide.md#5-uso-explícito-com-poolservice) |
+| Rent, return, auto-return, inspect or clean up instances | [Return](Documentation~/Pooling-Usage-Guide.md#9-devolver-uma-instância-ao-pool), [Auto-return](Documentation~/Pooling-Usage-Guide.md#10-auto-return), [Snapshots](Documentation~/Pooling-Usage-Guide.md#11-snapshots-e-contadores), [Cleanup](Documentation~/Pooling-Usage-Guide.md#12-limpeza) |
+| Run the available manual smoke | [Manual QA procedure](Documentation~/Pooling-How-To.md#manual-qa-smoke) |
+
 ## Core API
 
 - `IPoolable`: minimal take/return callbacks.
@@ -31,6 +40,7 @@ It does not own framework bootstrap, Audio, VFX, gameplay identity, scene flow, 
 - `PoolService`: non-singleton service that owns registered pools by asset reference.
 - `PoolRuntimeHost`: optional scene component that composes a `PoolService` and declared pool definitions.
 - `PoolReturnHandle`: component added to pooled instances so an object can return itself to its origin pool.
+- `PoolRuntimeSnapshot`: active, inactive, and total counts exposed by `IPoolService.TryGetSnapshot`.
 
 ## Creating A PoolDefinitionAsset
 
@@ -55,6 +65,8 @@ service.Shutdown();
 
 `PoolDefinitionAsset` is the identity. The package does not parse strings to resolve pools.
 
+The service instance owns its registered pools. Call `Shutdown` when the composition owner ends; after shutdown, service operations throw. `PoolLifetimeScope` only labels definitions for explicit `ClearPoolsForScope` calls. It does not automatically follow Route, Activity, scene, or Framework lifecycle.
+
 ## Using PoolRuntimeHost
 
 Add `PoolRuntimeHost` to a scene object, assign the pool definitions, and let it initialize on `Awake` or call `Initialize` manually. The host is optional composition; it is not a global singleton and does not depend on `com.immersive.framework`.
@@ -69,20 +81,13 @@ GetComponent<PoolReturnHandle>().ReturnToPool();
 
 Invalid or duplicate returns return `false` and do not corrupt pool state.
 
-## Future Audio Use
+## Audio integration boundary
 
-Audio can later hold explicit `PoolDefinitionAsset` references and receive an `IPoolService` from its own composition path. This package does not implement Audio behavior, Audio fallback policy, voice budgeting, or Audio bootstrap.
+`com.immersive.audio` uses explicit `PoolDefinitionAsset` references and `IPoolService` composition for pooled SFX. Pooling does not implement Audio behavior, Audio fallback policy, voice budgeting, or Audio bootstrap.
 
-## Manual Smoke
+## Validation
 
-1. Create a `PoolDefinitionAsset` with a simple prefab.
-2. Add `PoolRuntimeHost` and assign the definition.
-3. Prewarm.
-4. Rent or spawn three objects.
-5. Return one object.
-6. Return all.
-7. Clear the pool.
-8. Confirm `PoolableBehaviour` callbacks and active/inactive counts.
+The package provides a manually invoked QA context-menu driver, not an automated test suite. Follow the [manual QA procedure](Documentation~/Pooling-How-To.md#manual-qa-smoke). The procedure checks authoring and pool operations but is not evidence that automated tests ran.
 
 ## License
 
